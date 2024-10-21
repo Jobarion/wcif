@@ -3,6 +3,8 @@ name = "wcif"
 description = "A parser for the WCA Competition Interchange Format"
 version = "0.1.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
+categories = ["parser-implementations"]
 
 [dependencies]
 chrono = { version = "0.4.38", features = ["serde"] }
