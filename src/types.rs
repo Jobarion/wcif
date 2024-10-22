@@ -62,7 +62,7 @@ pub type AttemptResult = i32;
 pub type AttemptResult = attempt_result::AttemptResult;
 pub type AttemptResultValue = u32;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Competition {
     pub format_version: MustBe!("1.0"),
@@ -78,7 +78,7 @@ pub struct Competition {
     pub extensions: Vec<Extension>
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Series {
     pub id: SeriesId,
@@ -87,10 +87,10 @@ pub struct Series {
     pub competitions_ids: Vec<CompetitionId>
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Person {
-    pub registrant_id: PersonId,
+    pub registrant_id: Option<PersonId>,
     pub name: String,
     pub wca_user_id: WCAUserId,
     pub wca_id: Option<WCAId>,
@@ -108,7 +108,7 @@ pub struct Person {
     pub extensions: Vec<Extension>
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Gender {
     #[serde(rename = "m")]
     Male,
@@ -118,7 +118,7 @@ pub enum Gender {
     Other
 }
 
-#[derive(Clone, SerializeDisplay, DeserializeFromStr)]
+#[derive(Clone, PartialEq, Hash, SerializeDisplay, DeserializeFromStr)]
 pub struct WCAId {
     pub year: u16,
     pub discriminant: u8,
@@ -127,7 +127,7 @@ pub struct WCAId {
 
 impl Display for WCAId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}{}{}", self.year, self.name, self.discriminant)
+        write!(f, "{}{}{:0>2}", self.year, self.name, self.discriminant)
     }
 }
 
@@ -169,7 +169,7 @@ impl FromStr for WCAId {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Role {
     #[serde(rename = "delegate")]
@@ -191,7 +191,7 @@ impl Role {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Registration {
     pub wca_registration_id: WCARegistrationId,
@@ -206,7 +206,7 @@ pub struct Registration {
     pub is_competing: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RegistrationStatus {
     Accepted,
@@ -214,7 +214,7 @@ pub enum RegistrationStatus {
     Deleted
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegistrationInfo {
     pub open_time: DateTime,
@@ -225,14 +225,14 @@ pub struct RegistrationInfo {
     pub use_wca_registration: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Avatar {
     pub url: String,
     pub thumb_url: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Assignment {
     pub activity_id: ActivityId,
@@ -240,13 +240,13 @@ pub struct Assignment {
     pub station_number: Option<u32>
 }
 
-#[derive(Clone, Debug, SerializeDisplay, DeserializeFromStr)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, SerializeDisplay, DeserializeFromStr)]
 pub enum AssignmentCode {
     Competitor,
     Staff(StaffAssignment),
 }
 
-#[derive(Clone, Debug, SerializeDisplay, DeserializeFromStr)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, SerializeDisplay, DeserializeFromStr)]
 pub enum StaffAssignment {
     Judge,
     Scrambler,
@@ -305,7 +305,7 @@ impl FromStr for StaffAssignment {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PersonalBest {
     pub event_id: EventId,
@@ -317,7 +317,7 @@ pub struct PersonalBest {
     pub national_ranking: u64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Event {
     pub id: EventId,
@@ -327,7 +327,7 @@ pub struct Event {
     pub extensions: Vec<Extension>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Round {
     pub id: RoundId,
@@ -343,7 +343,7 @@ pub struct Round {
     pub extensions: Vec<Extension>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RoundFormat {
     #[serde(rename = "1")]
@@ -380,21 +380,21 @@ impl RoundFormat {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimeLimit {
     pub centiseconds: u32,
     pub cumulative_round_ids: Vec<RoundId>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Cutoff {
     pub number_of_attempts: usize,
     pub attempt_result: AttemptResult,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "type")]
 pub enum AdvancementCondition {
@@ -409,7 +409,7 @@ pub enum AdvancementCondition {
 pub type Ranking = u64;
 pub type Percent = u8;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Qualification {
     pub when_date: Date,
@@ -418,7 +418,7 @@ pub struct Qualification {
     pub result_type: ResultType,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "type", content = "level")]
 pub enum QualificationType {
@@ -427,7 +427,7 @@ pub enum QualificationType {
     AnyResult,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoundResult {
     pub person_id: PersonId,
@@ -437,14 +437,14 @@ pub struct RoundResult {
     pub average: AttemptResult,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Attempt {
     pub result: AttemptResult,
     pub reconstruction: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScrambleSet {
     pub id: ScrambleSetId,
@@ -454,7 +454,7 @@ pub struct ScrambleSet {
 
 pub type Scramble = String;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Schedule {
     pub start_date: Date,
@@ -462,7 +462,7 @@ pub struct Schedule {
     pub venues: Vec<Venue>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Venue {
     pub id: VenueId,
@@ -475,7 +475,7 @@ pub struct Venue {
     pub extensions: Vec<Extension>
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Room {
     pub id: RoomId,
@@ -485,26 +485,27 @@ pub struct Room {
     pub extensions: Vec<Extension>
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ResultType {
     Single,
     Average
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Activity {
     pub id: ActivityId,
     pub name: String,
     pub activity_code: ActivityCode,
     pub start_time: DateTime,
+    pub end_time: DateTime,
     pub child_activities: Vec<Activity>,
     pub scramble_set_id: Option<ScrambleSetId>,
     pub extensions: Vec<Extension>
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(untagged)]
 pub enum Extension {
@@ -521,7 +522,7 @@ pub enum Extension {
     Unknown(UnknownExtension)
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnknownExtension {
     pub id: String,
@@ -536,7 +537,7 @@ mod attempt_result {
     use serde_json::Value;
     use crate::types::AttemptResultValue;
 
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Copy, Clone, PartialEq, Debug, Hash)]
     pub enum AttemptResult {
         Skipped,
         DNF,
@@ -583,19 +584,19 @@ mod activity_code {
     #[cfg(feature = "parse_puzzle_type")]
     use crate::types::puzzle_types::OfficialEventId;
 
-    #[derive(Clone, Debug, SerializeDisplay, DeserializeFromStr)]
+    #[derive(Clone, Debug, PartialEq, Hash, SerializeDisplay, DeserializeFromStr)]
     pub enum ActivityCode {
         Official(EventActivityCode<EventId>),
         Unofficial(UnofficialActivityCode)
     }
 
-    #[derive(Clone, Debug, SerializeDisplay, DeserializeFromStr)]
+    #[derive(Clone, Debug, PartialEq, Hash, SerializeDisplay, DeserializeFromStr)]
     pub struct RoundId<EventId: Debug + Display + Clone + FromStr> {
         pub event: EventId,
         pub round: RoundIdType,
     }
 
-    #[derive(Clone, Debug)]
+    #[derive(Clone, Debug, PartialEq, Hash)]
     pub struct EventActivityCode<EventId: Debug + Display + Clone + FromStr> {
         pub event: EventId,
         pub round: Option<RoundIdType>,
@@ -603,7 +604,7 @@ mod activity_code {
         pub attempt: Option<AttemptIdType>,
     }
 
-    #[derive(Clone, Debug)]
+    #[derive(Clone, Debug, PartialEq, Hash)]
     pub enum UnofficialActivityCode {
         Registration,
         Checkin,
@@ -804,7 +805,7 @@ mod puzzle_types {
 
     use serde_with::{DeserializeFromStr, SerializeDisplay};
 
-    #[derive(Clone, Debug)]
+    #[derive(Clone, Debug, PartialEq, Hash)]
     pub enum OfficialPuzzleType {
         Cube333,
         Cube222,
@@ -821,7 +822,7 @@ mod puzzle_types {
         MasterMagic,
     }
 
-    #[derive(Clone, Debug, SerializeDisplay, DeserializeFromStr)]
+    #[derive(Clone, Debug, PartialEq, Hash, SerializeDisplay, DeserializeFromStr)]
     pub enum OfficialEventId {
         Cube333,
         Cube222,

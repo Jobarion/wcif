@@ -9,7 +9,7 @@ type GroupIdType = crate::types::GroupIdType;
 #[cfg(not(feature = "parse_activity_code"))]
 type GroupIdType = u32;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActivityConfigExtension {
     pub id: MustBe!("groupifier.ActivityConfig"),
@@ -17,7 +17,7 @@ pub struct ActivityConfigExtension {
     pub data: ActivityConfig,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActivityConfig {
     pub capacity: f32,
@@ -30,7 +30,7 @@ pub struct ActivityConfig {
     pub featured_competitors_wca_user_ids: Vec<WCAUserId>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompetitionConfigExtension {
     pub id: MustBe!("groupifier.CompetitionConfig"),
@@ -39,7 +39,7 @@ pub struct CompetitionConfigExtension {
 }
 
 #[serde_as]
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompetitionConfig {
     pub local_names_first: bool,
@@ -54,7 +54,7 @@ pub struct CompetitionConfig {
     pub scorecard_order: Option<ScorecardOrder>
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CompetitorsSortingRule {
     Ranks,
@@ -63,7 +63,7 @@ pub enum CompetitorsSortingRule {
     NameOptimised
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ScorecardPaperSize {
     A4,
@@ -71,14 +71,14 @@ pub enum ScorecardPaperSize {
     Letter
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ScorecardOrder {
     Natural,
     Stacked
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomConfigExtension {
     pub id: MustBe!("groupifier.RoomConfig"),
@@ -86,7 +86,7 @@ pub struct RoomConfigExtension {
     pub data: RoomConfig,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomConfig {
     pub stations: u32,
