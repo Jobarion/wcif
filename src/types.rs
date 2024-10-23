@@ -4,6 +4,7 @@ use std::str::FromStr;
 use monostate::MustBe;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use chrono::TimeDelta;
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 pub type CompetitionId = String;
@@ -505,6 +506,12 @@ pub struct Activity {
     pub extensions: Vec<Extension>
 }
 
+impl Activity {
+    pub fn get_duration(&self) -> TimeDelta {
+        self.end_time.signed_duration_since(&self.start_time)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(untagged)]
@@ -518,6 +525,9 @@ pub enum Extension {
     #[cfg(feature = "groupifier")]
     #[serde(untagged)]
     GroupifierRoomConfig(crate::groupifier::RoomConfigExtension),
+    #[cfg(feature = "delegate_dashboard")]
+    #[serde(untagged)]
+    DelegateDashboardGroups(crate::delegate_dashboard::GroupsExtension),
     #[serde(untagged)]
     Unknown(UnknownExtension)
 }
@@ -579,24 +589,25 @@ mod activity_code {
     use std::fmt::{Debug, Display, Formatter};
     use std::str::FromStr;
     use serde_with::{DeserializeFromStr, SerializeDisplay};
+    use std::cmp::Ordering;
 
     use crate::types::EventId;
     #[cfg(feature = "parse_puzzle_type")]
     use crate::types::puzzle_types::OfficialEventId;
 
-    #[derive(Clone, Debug, PartialEq, Hash, SerializeDisplay, DeserializeFromStr)]
+    #[derive(Clone, Debug, PartialEq, Eq, Hash, SerializeDisplay, DeserializeFromStr)]
     pub enum ActivityCode {
         Official(EventActivityCode<EventId>),
         Unofficial(UnofficialActivityCode)
     }
 
-    #[derive(Clone, Debug, PartialEq, Hash, SerializeDisplay, DeserializeFromStr)]
+    #[derive(Clone, Debug, PartialEq, Eq, Hash, SerializeDisplay, DeserializeFromStr)]
     pub struct RoundId<EventId: Debug + Display + Clone + FromStr> {
         pub event: EventId,
         pub round: RoundIdType,
     }
 
-    #[derive(Clone, Debug, PartialEq, Hash)]
+    #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct EventActivityCode<EventId: Debug + Display + Clone + FromStr> {
         pub event: EventId,
         pub round: Option<RoundIdType>,
@@ -604,7 +615,52 @@ mod activity_code {
         pub attempt: Option<AttemptIdType>,
     }
 
-    #[derive(Clone, Debug, PartialEq, Hash)]
+    impl <EventId: PartialEq + Debug + Display + Clone + FromStr> PartialEq<EventActivityCode<EventId>> for RoundId<EventId> {
+        fn eq(&self, other: &EventActivityCode<EventId>) -> bool {
+            let evc: EventActivityCode<EventId> = self.into();
+            evc.eq(other)
+        }
+    }
+
+    impl <EventId: Eq + Debug + Display + Clone + FromStr> PartialOrd for EventActivityCode<EventId> {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            if self.event != other.event {
+                return None;
+            }
+            let mut self_more_specific = None;
+            if self.round != other.round {
+                self_more_specific = match (self.round.is_some(), other.round.is_some()) {
+                    (true, true) => return None,
+                    (true, false) => Some(true),
+                    (false, true) => Some(false),
+                    (false, false) => unreachable!()
+                }
+            }
+            if self.group != other.group {
+                self_more_specific = match (self.group.is_some(), other.group.is_some(), self_more_specific) {
+                    (true, true, _) => return None,
+                    (true, false, Some(false)) => return None,
+                    (false, true, Some(true)) => return None,
+                    (true, false, _) => Some(true),
+                    (false, true, _) => Some(false),
+                    (false, false, _) => unreachable!()
+                }
+            }
+            if self.attempt != other.attempt {
+                match (self.attempt.is_some(), other.attempt.is_some(), self_more_specific) {
+                    (true, true, _) => return None,
+                    (true, false, Some(false)) => return None,
+                    (false, true, Some(true)) => return None,
+                    (true, false, _) => return Some(Ordering::Less),
+                    (false, true, _) => return Some(Ordering::Greater),
+                    (false, false, _) => unreachable!()
+                }
+            }
+            Some(Ordering::Equal)
+        }
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub enum UnofficialActivityCode {
         Registration,
         Checkin,
@@ -805,7 +861,7 @@ mod puzzle_types {
 
     use serde_with::{DeserializeFromStr, SerializeDisplay};
 
-    #[derive(Clone, Debug, PartialEq, Hash)]
+    #[derive(Clone, Debug, Eq, PartialEq, Hash)]
     pub enum OfficialPuzzleType {
         Cube333,
         Cube222,
@@ -822,7 +878,7 @@ mod puzzle_types {
         MasterMagic,
     }
 
-    #[derive(Clone, Debug, PartialEq, Hash, SerializeDisplay, DeserializeFromStr)]
+    #[derive(Clone, Debug, Eq, PartialEq, Hash, SerializeDisplay, DeserializeFromStr)]
     pub enum OfficialEventId {
         Cube333,
         Cube222,

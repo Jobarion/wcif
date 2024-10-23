@@ -4,11 +4,6 @@ use serde_with::serde_as;
 use serde_with::NoneAsEmptyString;
 use crate::types::WCAUserId;
 
-#[cfg(feature = "parse_activity_code")]
-type GroupIdType = crate::types::GroupIdType;
-#[cfg(not(feature = "parse_activity_code"))]
-type GroupIdType = u32;
-
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActivityConfigExtension {
@@ -21,7 +16,7 @@ pub struct ActivityConfigExtension {
 #[serde(rename_all = "camelCase")]
 pub struct ActivityConfig {
     pub capacity: f32,
-    pub groups: GroupIdType,
+    pub groups: u32,
     pub scramblers: u32,
     pub runners: u32,
     pub assign_judges: bool,
