@@ -1,5 +1,6 @@
 use monostate::MustBe;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
+use serde::de::Error;
 use serde_with::serde_as;
 use serde_with::NoneAsEmptyString;
 use crate::types::WCAUserId;
@@ -15,7 +16,8 @@ pub struct ActivityConfigExtension {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActivityConfig {
-    pub capacity: f32,
+    #[serde(serialize_with = "format_float_short")]
+    pub capacity: f64,
     pub groups: u32,
     pub scramblers: u32,
     pub runners: u32,
@@ -23,6 +25,16 @@ pub struct ActivityConfig {
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub featured_competitors_wca_user_ids: Vec<WCAUserId>,
+}
+
+fn format_float_short<S: Serializer>(val: &f64, serializer: S) -> Result<S::Ok, S::Error> {
+    if *val == 1.0 {
+        serializer.serialize_u8(1)
+    } else if *val == 0.0 {
+        serializer.serialize_u8(0)
+    } else {
+        serializer.serialize_f64(*val)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -46,7 +58,8 @@ pub struct CompetitionConfig {
     pub no_running_for_foreigners: Option<bool>,
     pub print_stations: Option<bool>,
     pub scorecard_paper_size: Option<ScorecardPaperSize>,
-    pub scorecard_order: Option<ScorecardOrder>
+    pub scorecard_order: Option<ScorecardOrder>,
+    pub print_scorecards_cover_sheets: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]

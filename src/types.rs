@@ -1,11 +1,12 @@
+use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter};
 use std::num::ParseIntError;
 use std::str::FromStr;
 use monostate::MustBe;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer, Deserializer};
 use serde_json::Value;
 use chrono::TimeDelta;
-use serde_with::{DeserializeFromStr, SerializeDisplay};
+use serde_with::{DeserializeFromStr, SerializeDisplay, skip_serializing_none};
 
 pub type CompetitionId = String;
 pub type SeriesId = String;
@@ -21,7 +22,6 @@ pub type CurrencyCode = String;
 pub type Date = chrono::NaiveDate;
 pub type DateTime = chrono::DateTime<chrono::Utc>;
 
-// Officially recognized by the spec as a string, might be replaced by an enum
 #[cfg(not(feature = "parse_puzzle_type"))]
 pub type EventId = String;
 #[cfg(feature = "parse_puzzle_type")]
@@ -60,8 +60,15 @@ pub type UnofficialEventActivityCode = activity_code::EventActivityCode<String>;
 #[cfg(not(feature = "parse_attempt_result"))]
 pub type AttemptResult = i32;
 #[cfg(feature = "parse_attempt_result")]
-pub type AttemptResult = attempt_result::AttemptResult;
-pub type AttemptResultValue = u32;
+pub type CentiSecondsResultValue = attempt_result::CentiSecondAttemptResultValue;
+#[cfg(feature = "parse_attempt_result")]
+pub type FMCResultValue = attempt_result::FMCAttemptResultValue;
+#[cfg(feature = "parse_attempt_result")]
+pub type AttemptResult = attempt_result::AttemptResult<CentiSecondsResultValue>;
+#[cfg(feature = "parse_attempt_result")]
+pub type MultiBlindResultValue = attempt_result::MultiBlindAttemptResultValue;
+#[cfg(feature = "parse_attempt_result")]
+pub type MultiBlindAttemptResult = attempt_result::AttemptResult<MultiBlindResultValue>;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,8 +82,46 @@ pub struct Competition {
     pub events: Vec<Event>,
     pub schedule: Schedule,
     pub registration_info: RegistrationInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub competitor_limit: Option<u32>,
     pub extensions: Vec<Extension>
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrivateCompetition {
+    pub format_version: MustBe!("1.0"),
+    pub id: CompetitionId,
+    pub name: String,
+    pub short_name: String,
+    pub series: Option<Series>,
+    pub persons: Vec<PrivatePerson>,
+    pub events: Vec<Event>,
+    pub schedule: Schedule,
+    pub registration_info: RegistrationInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub competitor_limit: Option<u32>,
+    pub extensions: Vec<Extension>
+}
+
+impl From<PrivateCompetition> for Competition {
+    fn from(value: PrivateCompetition) -> Self {
+        Self {
+            format_version: value.format_version,
+            id: value.id,
+            name: value.name,
+            short_name: value.short_name,
+            series: value.series,
+            persons: value.persons.into_iter()
+                .map(|x|Into::<Person>::into(x))
+                .collect(),
+            events: value.events,
+            schedule: value.schedule,
+            registration_info: value.registration_info,
+            competitor_limit: value.competitor_limit,
+            extensions: value.extensions,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -97,16 +142,50 @@ pub struct Person {
     pub wca_id: Option<WCAId>,
     pub country_iso2: CountryCode,
     pub gender: Gender,
-    #[cfg(feature = "private_properties")]
-    pub birthdate: chrono::NaiveDate,
-    #[cfg(feature = "private_properties")]
-    pub email: String,
     pub avatar: Option<Avatar>,
     pub roles: Vec<Role>,
     pub registration: Option<Registration>,
     pub assignments: Vec<Assignment>,
     pub personal_bests: Vec<PersonalBest>,
     pub extensions: Vec<Extension>
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrivatePerson {
+    pub registrant_id: Option<PersonId>,
+    pub name: String,
+    pub wca_user_id: WCAUserId,
+    pub wca_id: Option<WCAId>,
+    pub country_iso2: CountryCode,
+    pub gender: Gender,
+    pub birthdate: chrono::NaiveDate,
+    pub email: String,
+    pub avatar: Option<Avatar>,
+    pub roles: Vec<Role>,
+    pub registration: Option<PrivateRegistration>,
+    pub assignments: Vec<Assignment>,
+    pub personal_bests: Vec<PersonalBest>,
+    pub extensions: Vec<Extension>
+}
+
+impl From<PrivatePerson> for Person {
+    fn from(value: PrivatePerson) -> Self {
+        Self {
+            registrant_id: value.registrant_id,
+            name: value.name,
+            wca_user_id: value.wca_user_id,
+            wca_id: value.wca_id,
+            country_iso2: value.country_iso2,
+            gender: value.gender,
+            avatar: value.avatar,
+            roles: value.roles,
+            registration: value.registration.map(|x|Into::<Registration>::into(x)),
+            assignments: value.assignments,
+            personal_bests: value.personal_bests,
+            extensions: value.extensions,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Hash, Serialize, Deserialize)]
@@ -119,11 +198,19 @@ pub enum Gender {
     Other
 }
 
-#[derive(Clone, PartialEq, Hash, SerializeDisplay, DeserializeFromStr)]
+#[derive(Clone, PartialEq, Eq, Ord, Hash, SerializeDisplay, DeserializeFromStr)]
 pub struct WCAId {
     pub year: u16,
     pub discriminant: u8,
     pub name: String
+}
+
+impl PartialOrd for WCAId {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.year.cmp(&other.year)
+            .then(self.name.cmp(&other.name))
+            .then(self.discriminant.cmp(&other.discriminant)))
+    }
 }
 
 impl Display for WCAId {
@@ -138,6 +225,7 @@ impl Debug for WCAId {
     }
 }
 
+#[derive(Debug)]
 pub enum WCAIdParseError {
     ParseIntError(ParseIntError),
     LengthError(usize)
@@ -198,13 +286,30 @@ pub struct Registration {
     pub wca_registration_id: WCARegistrationId,
     pub event_ids: Vec<EventId>,
     pub status: RegistrationStatus,
-    #[cfg(feature = "private_properties")]
+    pub is_competing: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrivateRegistration {
+    pub wca_registration_id: WCARegistrationId,
+    pub event_ids: Vec<EventId>,
+    pub status: RegistrationStatus,
     pub guests: u32,
-    #[cfg(feature = "private_properties")]
     pub comments: String,
-    #[cfg(feature = "private_properties")]
     pub administrative_notes: String,
     pub is_competing: bool,
+}
+
+impl From<PrivateRegistration> for Registration {
+    fn from(value: PrivateRegistration) -> Self {
+        Self {
+            wca_registration_id: value.wca_registration_id,
+            event_ids: value.event_ids,
+            status: value.status,
+            is_competing: value.is_competing,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Hash, Serialize, Deserialize)]
@@ -235,6 +340,7 @@ pub struct Avatar {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[skip_serializing_none]
 pub struct Assignment {
     pub activity_id: ActivityId,
     pub assignment_code: AssignmentCode,
@@ -255,6 +361,17 @@ pub enum StaffAssignment {
     DataEntry,
     Announcer,
     Other(String)
+}
+
+impl StaffAssignment {
+    pub fn is_competitor_staffing_role(&self) -> bool {
+        match self {
+            StaffAssignment::Judge => true,
+            StaffAssignment::Scrambler => true,
+            StaffAssignment::Runner => true,
+            _ => false
+        }
+    }
 }
 
 impl Display for AssignmentCode {
@@ -323,6 +440,7 @@ pub struct PersonalBest {
 pub struct Event {
     pub id: EventId,
     pub rounds: Vec<Round>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub competitor_limit: Option<u32>,
     pub qualification: Option<Qualification>,
     pub extensions: Vec<Extension>,
@@ -425,11 +543,22 @@ pub struct Qualification {
 pub enum QualificationType {
     AttemptResult(AttemptResult),
     Ranking(Ranking),
-    AnyResult,
+    #[serde(serialize_with = "serialize_any_result")]
+    #[serde(deserialize_with = "deserialize_any_result")]
+    AnyResult(),
+}
+
+fn serialize_any_result<S: Serializer>(serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_none()
+}
+
+fn deserialize_any_result<'de, D: Deserializer<'de>>(_: D) -> Result<(), D::Error> {
+    Ok(())
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[skip_serializing_none]
 pub struct RoundResult {
     pub person_id: PersonId,
     pub ranking: Option<u64>,
@@ -440,6 +569,7 @@ pub struct RoundResult {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[skip_serializing_none]
 pub struct Attempt {
     pub result: AttemptResult,
     pub reconstruction: Option<String>,
@@ -495,6 +625,7 @@ pub enum ResultType {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[skip_serializing_none]
 pub struct Activity {
     pub id: ActivityId,
     pub name: String,
@@ -502,6 +633,8 @@ pub struct Activity {
     pub start_time: DateTime,
     pub end_time: DateTime,
     pub child_activities: Vec<Activity>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub scramble_set_id: Option<ScrambleSetId>,
     pub extensions: Vec<Extension>
 }
@@ -516,16 +649,16 @@ impl Activity {
 #[serde(rename_all = "camelCase")]
 #[serde(untagged)]
 pub enum Extension {
-    #[cfg(feature = "groupifier")]
+    #[cfg(feature = "extension_groupifier")]
     #[serde(untagged)]
     GroupifierCompetitionConfig(crate::groupifier::CompetitionConfigExtension),
-    #[cfg(feature = "groupifier")]
+    #[cfg(feature = "extension_groupifier")]
     #[serde(untagged)]
     GroupifierActivityConfig(crate::groupifier::ActivityConfigExtension),
-    #[cfg(feature = "groupifier")]
+    #[cfg(feature = "extension_groupifier")]
     #[serde(untagged)]
     GroupifierRoomConfig(crate::groupifier::RoomConfigExtension),
-    #[cfg(feature = "delegate_dashboard")]
+    #[cfg(feature = "extension_delegate_dashboard")]
     #[serde(untagged)]
     DelegateDashboardGroups(crate::delegate_dashboard::GroupsExtension),
     #[serde(untagged)]
@@ -542,34 +675,195 @@ pub struct UnknownExtension {
 
 #[cfg(feature = "parse_attempt_result")]
 mod attempt_result {
+    use std::cmp::Ordering;
+    use std::fmt::{Debug, Display, Formatter};
+    use std::hash::Hash;
     use serde::{Serializer};
     use serde::de::Error;
     use serde_json::Value;
-    use crate::types::AttemptResultValue;
 
-    #[derive(Copy, Clone, PartialEq, Debug, Hash)]
-    pub enum AttemptResult {
+    #[derive(Copy, Clone, PartialEq, Eq, Ord, Debug, Hash)]
+    pub enum AttemptResult<ARV: Ord + Eq + Copy> {
         Skipped,
         DNF,
         DNS,
-        Success(AttemptResultValue),
+        Success(ARV),
     }
 
-    impl<'de> serde::Deserialize<'de> for AttemptResult {
-        fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-            let value = Value::deserialize(d)?;
+    impl <ARV: Ord + Eq + Copy> AttemptResult<ARV> {
+        pub fn is_success(&self) -> bool {
+            if let AttemptResult::Success(_) = self {
+                true
+            } else {
+                false
+            }
+        }
+    }
 
-            Ok(match value.as_i64().ok_or(Error::custom("Not a number"))? {
+    #[derive(Copy, Clone, PartialEq, Eq, Ord, Debug, Hash)]
+    pub struct MultiBlindAttemptResultValue {
+        attempted: u32,
+        solved: u32,
+        time: CentiSecondAttemptResultValue,
+        old_style: bool,
+    }
+
+    pub type CentiSecondAttemptResultValue = u32;
+    pub type FMCAttemptResultValue = u16;
+
+    impl MultiBlindAttemptResultValue {
+        pub fn attempted(&self) -> u32 {
+            self.attempted
+        }
+
+        pub fn solved(&self) -> u32 {
+            self.solved
+        }
+
+        pub fn failed(&self) -> u32 {
+            self.attempted - self.solved
+        }
+
+        pub fn points(&self) -> u32 {
+            self.solved() - self.failed()
+        }
+
+        pub fn seconds(&self) -> CentiSecondAttemptResultValue {
+            self.time
+        }
+
+        pub fn is_old_style(&self) -> bool {
+            self.old_style
+        }
+    }
+
+    impl AttemptResult<CentiSecondAttemptResultValue> {
+        pub fn to_multi_blind(&self) -> AttemptResult<MultiBlindAttemptResultValue> {
+            (*self).into()
+        }
+
+        pub fn to_fmc(&self) -> AttemptResult<FMCAttemptResultValue> {
+            (*self).into()
+        }
+    }
+
+    impl<'de> serde::Deserialize<'de> for MultiBlindAttemptResultValue {
+        fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+            CentiSecondAttemptResultValue::deserialize(d).map(Into::<MultiBlindAttemptResultValue>::into)
+        }
+    }
+
+    impl serde::Serialize for MultiBlindAttemptResultValue {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer
+        {
+            let value = if self.is_old_style() {
+                1000000000 +
+                    (99 - self.solved()) * 10000000 +
+                    self.attempted() * 100000 +
+                    self.seconds()
+            } else {
+                (99 - (self.solved() - self.failed())) * 10000000 +
+                    self.seconds() * 100 +
+                    self.failed()
+            };
+            serializer.serialize_i64(value as i64)
+        }
+    }
+
+    impl AttemptResult<CentiSecondAttemptResultValue> {
+        pub fn as_multi_blind(&self) -> AttemptResult<MultiBlindAttemptResultValue> {
+            (*self).into()
+        }
+    }
+
+    impl <ARV: Copy + Eq + Ord + From<u32>> TryFrom<i64> for AttemptResult<ARV> {
+        type Error = ();
+
+        fn try_from(value: i64) -> Result<Self, Self::Error> {
+            Ok(match value {
                 -2 => AttemptResult::DNS,
                 -1 => AttemptResult::DNF,
                 0 => AttemptResult::Skipped,
-                x if x > 0 => AttemptResult::Success(x as u32),
-                _ => Err(Error::custom("not a valid result"))?,
+                x if x > 0 => AttemptResult::Success(ARV::from(x as u32)),
+                _ => return Err(())
             })
         }
     }
 
-    impl serde::Serialize for AttemptResult {
+    impl From<AttemptResult<CentiSecondAttemptResultValue>> for AttemptResult<MultiBlindAttemptResultValue> {
+        fn from(value: AttemptResult<CentiSecondAttemptResultValue>) -> Self {
+            match value {
+                AttemptResult::Skipped => Self::Skipped,
+                AttemptResult::DNF => Self::DNF,
+                AttemptResult::DNS => Self::DNS,
+                AttemptResult::Success(ast) => Self::Success(MultiBlindAttemptResultValue::from(ast))
+            }
+        }
+    }
+
+    impl From<AttemptResult<CentiSecondAttemptResultValue>> for AttemptResult<FMCAttemptResultValue> {
+        fn from(value: AttemptResult<CentiSecondAttemptResultValue>) -> Self {
+            match value {
+                AttemptResult::Skipped => Self::Skipped,
+                AttemptResult::DNF => Self::DNF,
+                AttemptResult::DNS => Self::DNS,
+                AttemptResult::Success(ast) => Self::Success(ast as FMCAttemptResultValue)
+            }
+        }
+    }
+
+    impl From<CentiSecondAttemptResultValue> for MultiBlindAttemptResultValue {
+        fn from(value: CentiSecondAttemptResultValue) -> Self {
+            if value < 1000000000 {
+                let missed = value % 100;
+                let value = value / 100;
+                let time = value % 100000;
+                let value = value / 100000;
+                let difference = 99 - value;
+                let solved = difference + missed;
+                let attempted = solved + missed;
+                Self {
+                    attempted,
+                    solved,
+                    time: CentiSecondAttemptResultValue::from(time),
+                    old_style: false
+                }
+            } else {
+                let time = value % 100000;
+                let value = value / 100000;
+                let attempted = value % 100;
+                let value = value / 100;
+                let solved = 99 - (value % 100);
+                Self {
+                    attempted,
+                    solved,
+                    time: CentiSecondAttemptResultValue::from(time),
+                    old_style: true
+                }
+            }
+        }
+    }
+
+    impl PartialOrd for MultiBlindAttemptResultValue {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            let cmp = self.points().cmp(&other.points())
+                .then(self.time.cmp(&other.time).reverse())
+                .then(self.failed().cmp(&other.failed()).reverse());
+            Some(cmp)
+        }
+    }
+
+    impl<'de, ARV: Ord + Eq + Copy + From<u32>> serde::Deserialize<'de> for AttemptResult<ARV> {
+        fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+            let value = Value::deserialize(d)?;
+            Self::try_from(value.as_i64().ok_or(Error::custom("Not a number"))?)
+                .map_err(|_|Error::custom("not a valid result"))
+        }
+    }
+
+    impl <ARV: Ord + Eq + Into<u32> + Copy> serde::Serialize for AttemptResult<ARV> {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where
             S: Serializer
@@ -578,7 +872,77 @@ mod attempt_result {
                 AttemptResult::Skipped => serializer.serialize_i64(0),
                 AttemptResult::DNF => serializer.serialize_i64(-1),
                 AttemptResult::DNS => serializer.serialize_i64(-2),
-                AttemptResult::Success(x) => serializer.serialize_i64(*x as i64),
+                AttemptResult::Success(x) => serializer.serialize_i64(Into::<u32>::into(*x) as i64),
+            }
+        }
+    }
+
+    impl <ARV: Ord + Eq + Copy> PartialOrd for AttemptResult<ARV> {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(match (*self, *other) {
+                (Self::Success(a), Self::Success(b)) => a.cmp(&b).reverse(),
+                (Self::Success(_), _) => Ordering::Greater,
+                (_, Self::Success(_)) => Ordering::Less,
+                _ => Ordering::Equal
+            })
+        }
+    }
+
+    impl <ARV: Ord + Eq + Copy> AttemptResult<ARV> {
+        pub fn ok(&self) -> Option<ARV> {
+            match *self {
+                AttemptResult::Success(a) => Some(a),
+                _ => None,
+            }
+        }
+    }
+
+    impl Display for AttemptResult<CentiSecondAttemptResultValue> {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            self.fmt_or_else(f, &|arv, f|{
+                if arv < 100 * 60 {
+                    write!(f, "{}.{:0>2}", arv / 100, arv % 100)
+                } else if arv < 100 * 60 * 60 {
+                    write!(f, "{}:{:0>2}.{:0>2}", arv / 60 / 100, (arv / 100) % 60, arv % 100)
+                } else {
+                    write!(f, "{}:{:0>2}:{:0>2}.{:0>2}", arv / 3600 / 100, (arv / 60 / 100) % 60, (arv / 100) % 60, arv % 100)
+                }
+            })
+        }
+    }
+
+    impl Display for AttemptResult<FMCAttemptResultValue> {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            self.fmt_or_else(f, &|arv, f|{
+                if arv > 80 {
+                    write!(f, "{}.{:0<2}", arv / 100, arv % 100)
+                } else {
+                    write!(f, "{arv}")
+                }
+            })
+        }
+    }
+
+    impl Display for AttemptResult<MultiBlindAttemptResultValue> {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            self.fmt_or_else(f, &|arv, f|{
+                write!(f, "{}/{} ", arv.solved(), arv.attempted())?;
+                if arv.seconds() >= 3600 {
+                    write!(f, "{}:{:0>2}:{:0>2}", arv.seconds() / 3600, (arv.seconds() % 3600) / 60, arv.seconds() % 60)
+                } else {
+                    write!(f, "{:0>2}:{:0>2}", arv.seconds() / 60, arv.seconds() % 60)
+                }
+            })
+        }
+    }
+
+    impl <ARV: Ord + Eq + Copy> AttemptResult<ARV> {
+        fn fmt_or_else<F: Fn(ARV, &mut Formatter<'_>) -> std::fmt::Result>(&self, f: &mut Formatter<'_>, success: &F) -> std::fmt::Result {
+            match *self {
+                AttemptResult::Skipped => write!(f, ""),
+                AttemptResult::DNF => write!(f, "DNF"),
+                AttemptResult::DNS => write!(f, "DNS"),
+                AttemptResult::Success(arv) => success(arv, f)
             }
         }
     }
@@ -613,6 +977,15 @@ mod activity_code {
         pub round: Option<RoundIdType>,
         pub group: Option<GroupIdType>,
         pub attempt: Option<AttemptIdType>,
+    }
+
+    impl ActivityCode {
+        pub fn is_official(&self) -> bool {
+            if let Self::Official(_) = self {
+                return true
+            }
+            return false
+        }
     }
 
     impl <EventId: PartialEq + Debug + Display + Clone + FromStr> PartialEq<EventActivityCode<EventId>> for RoundId<EventId> {
@@ -856,6 +1229,7 @@ mod activity_code {
 
 #[cfg(feature = "parse_puzzle_type")]
 mod puzzle_types {
+    use std::cmp::Ordering;
     use std::fmt::{Debug, Display, Formatter};
     use std::str::FromStr;
 
@@ -878,7 +1252,7 @@ mod puzzle_types {
         MasterMagic,
     }
 
-    #[derive(Clone, Debug, Eq, PartialEq, Hash, SerializeDisplay, DeserializeFromStr)]
+    #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Hash, SerializeDisplay, DeserializeFromStr)]
     pub enum OfficialEventId {
         Cube333,
         Cube222,
@@ -889,7 +1263,6 @@ mod puzzle_types {
         Blind333,
         FewestMoves333,
         OneHanded333,
-        Feet333,
         Clock,
         Megaminx,
         Pyraminx,
@@ -898,9 +1271,156 @@ mod puzzle_types {
         Blind444,
         Blind555,
         MultiBlind333,
+        Feet333,
         Magic,
         MasterMagic,
         MultiBlindOldStyle333,
+    }
+
+    impl OfficialEventId {
+        fn ordinal(&self) -> usize {
+            match self {
+                OfficialEventId::Cube333 => 0,
+                OfficialEventId::Cube222 => 1,
+                OfficialEventId::Cube444 => 2,
+                OfficialEventId::Cube555 => 3,
+                OfficialEventId::Cube666 => 4,
+                OfficialEventId::Cube777 => 5,
+                OfficialEventId::Blind333 => 6,
+                OfficialEventId::FewestMoves333 => 7,
+                OfficialEventId::OneHanded333 => 8,
+                OfficialEventId::Clock => 9,
+                OfficialEventId::Megaminx => 10,
+                OfficialEventId::Pyraminx => 11,
+                OfficialEventId::Skewb => 12,
+                OfficialEventId::Square1 => 13,
+                OfficialEventId::Blind444 => 14,
+                OfficialEventId::Blind555 => 15,
+                OfficialEventId::MultiBlind333 => 16,
+                OfficialEventId::Feet333 => 17,
+                OfficialEventId::Magic => 18,
+                OfficialEventId::MasterMagic => 19,
+                OfficialEventId::MultiBlindOldStyle333 => 20,
+            }
+        }
+    }
+
+    impl Ord for OfficialEventId {
+        fn cmp(&self, other: &Self) -> Ordering {
+            self.ordinal().cmp(&other.ordinal())
+        }
+    }
+
+    impl OfficialEventId {
+        pub fn is_official(&self) -> bool {
+            match self {
+                OfficialEventId::Feet333 => false,
+                OfficialEventId::Magic => false,
+                OfficialEventId::MasterMagic => false,
+                OfficialEventId::MultiBlindOldStyle333 => false,
+                _ => true,
+            }
+        }
+
+        pub fn all() -> [Self; 21] {
+            [
+                Self::Cube333,
+                Self::Cube222,
+                Self::Cube444,
+                Self::Cube555,
+                Self::Cube666,
+                Self::Cube777,
+                Self::Blind333,
+                Self::FewestMoves333,
+                Self::OneHanded333,
+                Self::Clock,
+                Self::Megaminx,
+                Self::Pyraminx,
+                Self::Skewb,
+                Self::Square1,
+                Self::Blind444,
+                Self::Blind555,
+                Self::MultiBlind333,
+                Self::Feet333,
+                Self::Magic,
+                Self::MasterMagic,
+                Self::MultiBlindOldStyle333,
+            ]
+        }
+
+        pub fn all_official() -> [Self; 17] {
+            [
+                Self::Cube333,
+                Self::Cube222,
+                Self::Cube444,
+                Self::Cube555,
+                Self::Cube666,
+                Self::Cube777,
+                Self::Blind333,
+                Self::FewestMoves333,
+                Self::OneHanded333,
+                Self::Clock,
+                Self::Megaminx,
+                Self::Pyraminx,
+                Self::Skewb,
+                Self::Square1,
+                Self::Blind444,
+                Self::Blind555,
+                Self::MultiBlind333,
+            ]
+        }
+
+        pub fn get_official_name(&self) -> &'static str {
+            match &self {
+                OfficialEventId::Cube333 => "3x3x3 Cube",
+                OfficialEventId::Cube222 => "2x2x2 Cube",
+                OfficialEventId::Cube444 => "4x4x4 Cube",
+                OfficialEventId::Cube555 => "5x5x5 Cube",
+                OfficialEventId::Cube666 => "6x6x6 Cube",
+                OfficialEventId::Cube777 => "7x7x7 Cube",
+                OfficialEventId::Blind333 => "3x3x3 Blindfolded",
+                OfficialEventId::FewestMoves333 => "3x3x3 Fewest Moves",
+                OfficialEventId::OneHanded333 => "3x3x3 One-Handed",
+                OfficialEventId::Feet333 => "3x3x3 With Feet",
+                OfficialEventId::Clock => "Clock",
+                OfficialEventId::Megaminx => "Megaminx",
+                OfficialEventId::Pyraminx => "Pyraminx",
+                OfficialEventId::Skewb => "Skewb",
+                OfficialEventId::Square1 => "Square-1",
+                OfficialEventId::Blind444 => "4x4x4 Blindfolded",
+                OfficialEventId::Blind555 => "5x5x5 Blindfolded",
+                OfficialEventId::MultiBlind333 | OfficialEventId::MultiBlindOldStyle333 => "3x3x3 Multi-Blind",
+                OfficialEventId::Magic => "Magic",
+                OfficialEventId::MasterMagic => "Master Magic",
+            }
+        }
+
+        pub fn has_average_or_mean(&self) -> bool {
+            match self {
+                OfficialEventId::MultiBlind333 => false,
+                OfficialEventId::MultiBlindOldStyle333 => false,
+                _ => true,
+            }
+        }
+
+        pub fn has_average(&self) -> bool {
+            match self {
+                OfficialEventId::Cube666 | OfficialEventId::Cube777 => false,
+                OfficialEventId::Blind333 | OfficialEventId::Blind444 | OfficialEventId::Blind555 => false,
+                OfficialEventId::FewestMoves333 => false,
+                OfficialEventId::MultiBlind333 | OfficialEventId::MultiBlindOldStyle333 => false,
+                _ => true,
+            }
+        }
+
+        pub fn has_mean(&self) -> bool {
+            match self {
+                OfficialEventId::Cube666 | OfficialEventId::Cube777 => true,
+                OfficialEventId::Blind333 | OfficialEventId::Blind444 | OfficialEventId::Blind555 => true,
+                OfficialEventId::FewestMoves333 => true,
+                _ => false,
+            }
+        }
     }
 
     impl FromStr for OfficialEventId {

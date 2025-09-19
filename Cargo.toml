@@ -1,7 +1,7 @@
 [package]
 name = "wcif"
 description = "A parser for the WCA Competition Interchange Format"
-version = "0.1.1"
+version = "0.1.3"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 categories = ["parser-implementations"]
@@ -18,6 +18,5 @@ default = ["parse_activity_code", "parse_attempt_result", "parse_puzzle_type"]
 parse_puzzle_type = []
 parse_attempt_result = []
 parse_activity_code = []
-private_properties = []
-groupifier = []
-delegate_dashboard = []
+extension_groupifier = []
+extension_delegate_dashboard = []
